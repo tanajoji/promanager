@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+
+{% block title %}Add New Project{% endblock %}
+
+{% block content %}
+    <h2>Add A New Project</h2>
+
+    <form method="post">
+        {% csrf_token %}
+        {{ form.as_p }}
+        <button class="button button-primary" type="submit">Save</button>
+    </form>
+
+    <a href="{% url 'projects' %}">
+        <button class="button">Back to Projects</button>
+    </a>
+{% endblock %}

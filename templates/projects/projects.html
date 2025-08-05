@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}Projects{% endblock %}
+
+{% block content %}
+
+    <div style="display: flex;">
+        <h2>Your Projects</h2>
+        {% if user.is_authenticated %}
+            <form action="{% url 'logout' %}" method="post">
+                {% csrf_token %}
+                <button class="button" style="position: fixed; right: 20px; top: 20px;" type="submit">Logout</button>
+            </form>
+        {% endif %}
+    </div>
+
+    <a href="{% url 'add_project' %}">
+        <button class="button button-primary">Add A New Project</button>
+    </a>
+
+    {% if projects %}
+        <div style="margin-top: 30px;">
+            <ul>
+            {% for project in projects %}
+                <li>
+                    <strong>{{ project.title }}</strong>
+                    <a href="{% url 'delete_project' project.pk %}" >
+                        <button class="button button-red" type="button">Delete</button>
+                    </a>
+                    <div style="margin-bottom: 10px;">
+                        <a href="{% url 'edit_project' project.pk %}">
+                            <button class="button button-primary" type="button">Open Editor</button>
+                        </a>
+                    </div>
+                </li>
+            {% endfor %}
+            </ul>
+        </div>
+    {% else %}
+        <p>You have no projects yet.</p>
+    {% endif %}
+
+{% endblock %}

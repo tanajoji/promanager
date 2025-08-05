@@ -1,0 +1,68 @@
+.button {
+    background-color: #6d6d6d;
+    border: none;
+    color: white;
+    padding: 6px 10px;
+    text-align: center;
+    text-decoration: none;
+    display: inline-block;
+    font-size: 16px;
+    margin: 4px 2px;
+    cursor: pointer;
+    border-radius: 5px;
+    }
+    
+.button-primary {background-color: #71be77;}
+.button-red {background-color: #db4e44;}
+
+#editor {
+    border: 2px solid #ccc;
+    width: 100%;
+    height: 500px;
+    position: relative;
+    overflow: hidden;
+    margin-bottom: 20px;
+}
+
+.editor-element {
+    position: absolute;
+    border: 1px dashed #999;
+    padding: 4px;
+    background: white;
+    cursor: move;
+    min-width: 50px;
+    min-height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.editor-element.resizing {
+    border: 2px solid #007bff;
+    z-index: 1000;
+}
+
+.editor-element p,
+.editor-element img,
+.editor-element object {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.editor-element p {
+    font-size: 12px;
+    line-height: 1.2;
+    text-align: center;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    hyphens: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2px;
+    margin: 0;
+    width: 100%;
+    height: 100%;
+}

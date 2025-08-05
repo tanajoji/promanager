@@ -1,0 +1,385 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Editor{% endblock %}
+
+{% block content %}
+    <style>
+        .resize-handle {
+            position: absolute;
+            bottom: -5px;
+            right: -5px;
+            width: 10px;
+            height: 10px;
+            cursor: se-resize;
+            background-image: url('{% static "images/resize-icon.png" %}');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+
+        .delete-handle {
+            position: absolute;
+            top: -7px;
+            right: -7px;
+            width: 14px;
+            height: 14px;
+            cursor: default;
+            background-image: url('{% static "images/delete-icon.svg" %}');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
+    </style>
+
+    <h2 id="project-title" style="cursor:pointer;">{{ project.title }}</h2>
+    <input type="text" id="edit-title-input" value="{{ project.title }}" style="display:none; font-size:1.5em; width: 80%;" />
+
+    <div>
+        <input type="text" id="textInput" placeholder="Enter text here">
+        <button class="button button-primary" id="addTextBtn">Add Text</button>
+
+        <input type="file" id="fileInput" accept=".png,.jpg,.jpeg,.svg" style="display: none;">
+        <button class="button button-primary" id="uploadFileBtn">Upload Image/SVG</button>
+    </div>
+
+    <div id="editor">
+        {% for element in project.elements.all %}
+            <div class="editor-element" data-id="{{ element.id }}" draggable="true" style="left: {{ element.position_x }}px; top: {{ element.position_y }}px; width: {{ element.width }}px; height: {{ element.height }}px;">
+                {% if element.type == 'text' %}
+                    <p>{{ element.text_content }}</p>
+                {% elif element.type == 'image' %}
+                    <img src="{{ element.file.url }}" alt="Image">
+                {% endif %}
+                <div class="delete-handle"></div>
+                <div class="resize-handle"></div>
+            </div>
+        {% endfor %}
+    </div>
+
+    <script>
+    $(function() {
+        $('#project-title').on('click', function() {
+            $(this).hide();
+            $('#edit-title-input').show().focus();
+        });
+
+        $('#edit-title-input').on('blur keydown', function(e) {
+            if (e.type === 'blur' || e.key === 'Enter') {
+                var newTitle = $(this).val().trim();
+                if (newTitle.length === 0) {
+                    $(this).hide();
+                    $('#project-title').show();
+                    return;
+                }
+                $.ajax({
+                    url: '{% url "update_project_title" project.id %}',
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+                    data: { title: newTitle },
+                    success: function(response) {
+                        if (response.success) {
+                            $('#project-title').text(response.title);
+                        } else {
+                            alert(response.error || 'Failed to update title');
+                        }
+                        $('#edit-title-input').hide();
+                        $('#project-title').show();
+                    },
+                    error: function() {
+                        alert('Error updating title');
+                        $('#edit-title-input').hide();
+                        $('#project-title').show();
+                    }
+                });
+            }
+        });
+
+        function scaleText($element) {
+            const $text = $element.find('p');
+            if ($text.length === 0) return;
+            
+            const containerWidth = $element.width();
+            const containerHeight = $element.height();
+            const text = $text.text();
+            
+            // Start with a base font size
+            let fontSize = Math.min(containerWidth, containerHeight) * 0.3;
+            fontSize = Math.max(8, Math.min(fontSize, 24)); // Min 8px, Max 24px
+            
+            $text.css('font-size', fontSize + 'px');
+        }
+
+        // Initialize dragging and resizing for elements
+        function initializeElement($el) {
+            let isDragging = false;
+            let isResizing = false;
+            let shiftX, shiftY;
+            let startWidth, startHeight, startLeft, startTop;
+
+            // Scale text initially
+            scaleText($el);
+
+            // Dragging functionality
+            $el.on('mousedown', function(e) {
+                if ($(e.target).hasClass('resize-handle') || $(e.target).hasClass('delete-handle')) {
+                    return; // Don't allow dragging if clicking on resize or delete handle icons
+                }
+                
+                e.preventDefault();
+                isDragging = true;
+                const offset = $el.offset();
+                const editorOffset = $('#editor').offset();
+                shiftX = e.pageX - offset.left;
+                shiftY = e.pageY - offset.top;
+
+                $(document).on('mousemove.editorDrag', function(e) {
+                    if (isDragging) {
+                        let left = e.pageX - shiftX - editorOffset.left;
+                        let top = e.pageY - shiftY - editorOffset.top;
+
+                        // Keep element inside editor boundaries
+                        left = Math.max(0, Math.min(left, $('#editor').width() - $el.outerWidth()));
+                        top = Math.max(0, Math.min(top, $('#editor').height() - $el.outerHeight()));
+
+                        $el.css({ left: left + 'px', top: top + 'px', position: 'absolute' });
+                    }
+                });
+
+                $(document).on('mouseup.editorDrag', function() {
+                    isDragging = false;
+                    $(document).off('.editorDrag');
+
+                    const elementId = $el.data('id');
+                    const url = `{% url 'update_element_properties' 0 %}`.replace('0', elementId);
+                    const newLeft = parseFloat($el.css('left'));
+                    const newTop = parseFloat($el.css('top'));
+
+                    if (elementId) {
+                        $.ajax({
+                            url: url,
+                            method: 'POST',
+                            headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+                            data: {
+                                position_x: newLeft,
+                                position_y: newTop
+                            },
+                            success: function(response) {
+                                if (!response.success) {
+                                    alert('Failed to update position');
+                                }
+                            },
+                            error: function() {
+                                alert('Error updating position');
+                            }
+                        });
+                    }
+                });
+            });
+
+            // Resizing functionality
+            $el.find('.resize-handle').on('mousedown', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                isResizing = true;
+                $el.addClass('resizing');
+                
+                startWidth = $el.width();
+                startHeight = $el.height();
+                startLeft = $el.position().left;
+                startTop = $el.position().top;
+                
+                const startX = e.pageX;
+                const startY = e.pageY;
+
+                $(document).on('mousemove.editorResize', function(e) {
+                    if (isResizing) {
+                        const deltaX = e.pageX - startX;
+                        const deltaY = e.pageY - startY;
+                        
+                        const newWidth = Math.max(50, startWidth + deltaX);
+                        const newHeight = Math.max(30, startHeight + deltaY);
+                        
+                        // Keep element inside editor boundaries
+                        const maxWidth = $('#editor').width() - startLeft;
+                        const maxHeight = $('#editor').height() - startTop;
+                        
+                        const finalWidth = Math.min(newWidth, maxWidth);
+                        const finalHeight = Math.min(newHeight, maxHeight);
+                        
+                        $el.css({
+                            width: finalWidth + 'px',
+                            height: finalHeight + 'px'
+                        });
+                        
+                        // Scale text during resize
+                        scaleText($el);
+                    }
+                });
+
+                $(document).on('mouseup.editorResize', function() {
+                    isResizing = false;
+                    $el.removeClass('resizing');
+                    $(document).off('.editorResize');
+
+                    const elementId = $el.data('id');
+                    const url = `{% url 'update_element_properties' 0 %}`.replace('0', elementId);
+                    const newWidth = $el.width();
+                    const newHeight = $el.height();
+
+                    if (elementId) {
+                        $.ajax({
+                            url: url,
+                            method: 'POST',
+                            headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+                            data: {
+                                width: newWidth,
+                                height: newHeight
+                            },
+                            success: function(response) {
+                                if (!response.success) {
+                                    alert('Failed to update size');
+                                }
+                            },
+                            error: function() {
+                                alert('Error updating size');
+                            }
+                        });
+                    }
+                });
+            });
+
+            //Delete functionality
+            $el.find('.delete-handle').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!confirm('Are you sure you want to delete this element?')) return;
+                const elementId = $el.data('id');
+                const url = '{% url "delete_editor_element" 0 %}'.replace('0', elementId);
+                $.ajax({
+                    url: url,
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+                    success: function(response) {
+                        if (response.success) {
+                            $el.remove();
+                        } else {
+                            alert('Failed to delete element');
+                        }
+                    },
+                    error: function() {
+                        alert('Error deleting element');
+                    }
+                });
+            });
+        }
+
+        // Initialize existing elements
+        $('.editor-element').each(function() {
+            initializeElement($(this));
+        });
+
+        // Function to create and initialize a new editor element
+        function createAndAddEditorElement(elementData) {
+            
+            let $el = $('<div>', {
+                class: 'editor-element',
+                'data-id': elementData.id,
+                draggable: true,
+                css: {
+                    left: elementData.position_x + 'px',
+                    top: elementData.position_y + 'px',
+                    width: elementData.width + 'px',
+                    height: elementData.height + 'px',
+                    position: 'absolute'
+                }
+            });
+
+            if (elementData.type === 'text') {
+                $el.append($('<p>').text(elementData.text_content));
+            } else if (elementData.type === 'image') {
+                $el.append($('<img>', { src: elementData.file_url, alt: 'Image' }));
+            }
+
+            $el.append('<div class="delete-handle"></div>');
+            $el.append('<div class="resize-handle"></div>');
+
+            // Add to editor
+            $('#editor').append($el);
+
+            // Initialize drag/resize/delete handlers
+            initializeElement($el);
+        }
+
+        // Add Text Element
+        $('#addTextBtn').click(function() {
+            const userInput = $('#textInput').val().trim();
+            if (userInput) {
+                const formData = new FormData();
+                formData.append('text', userInput);
+
+                $.ajax({
+                    url: '{% url "add_text_element" project.id %}',
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        if (response.success && response.element) {
+                            createAndAddEditorElement(response.element);
+                            $('#textInput').val(''); // Clear input
+                        } else {
+                            alert('Failed to add text element');
+                        }
+                    },
+                    error: function() {
+                        alert('Error while adding text');
+                    }
+                });
+            } else {
+                alert('Please enter some text first.');
+            }
+        });
+
+        // Upload File / Add Image Element
+        $('#uploadFileBtn').click(function() {
+            $('#fileInput').click();
+        });
+
+        $('#fileInput').change(function() {
+            const file = this.files[0];
+            if (file) {
+                const formData = new FormData();
+                formData.append('file', file);
+
+                $.ajax({
+                    url: '{% url "upload_editor_file" project.id %}',
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+                    data: formData,
+                    processData: false,
+                    contentType: false,
+                    success: function(response) {
+                        if (response.success && response.element) {
+                            createAndAddEditorElement(response.element);
+                            $('#fileInput').val(''); // Clear file input
+                        } else {
+                            alert(response.error || 'Upload failed');
+                        }
+                    },
+                    error: function() {
+                        alert('Error uploading file');
+                    }
+                });
+            }
+        });
+    });
+    </script>
+
+    <a href="{% url 'projects' %}">
+        <button class="button">Back to Projects</button>
+    </a>
+
+{% endblock %}
