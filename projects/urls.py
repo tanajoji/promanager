@@ -13,4 +13,6 @@ urlpatterns = [
     path('<int:pk>/upload/', views.upload_editor_file, name='upload_editor_file'),
     path('update-element-properties/<int:element_id>/', views.update_element_properties, name='update_element_properties'),
     path('delete-element/<int:element_id>/', views.delete_editor_element, name='delete_editor_element'),
+    path('copy-element/<int:element_id>/', views.copy_editor_element, name='copy_editor_element'),
+    path('add-viewer/<int:pk>/', views.add_viewer, name='add_viewer'),
 ]

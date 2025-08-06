@@ -6,7 +6,8 @@ from django.views.decorators.http import require_POST
 from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
 from django.db import transaction
-from .models import Project, EditorElement
+from django.contrib.auth.models import User
+from .models import Project, EditorElement, ProjectUserRole
 from .forms import ProjectForm
 
 
@@ -25,9 +26,11 @@ def signup(request):
 def projects(request):
     if request.user.is_authenticated:
         user_projects = Project.objects.filter(owner=request.user)
+        viewer_roles = ProjectUserRole.objects.filter(user=request.user, role='viewer')
+        viewer_projects = Project.objects.filter(id__in=viewer_roles.values('project')).exclude(owner=request.user)
     else:
         user_projects = []
-    return render(request, 'projects/projects.html', {'projects': user_projects})
+    return render(request, 'projects/projects.html', {'projects': user_projects, 'viewer_projects': viewer_projects })
 
 @login_required
 def add_project(request):
@@ -70,9 +73,17 @@ def update_project_title(request, pk):
 
 @login_required
 def project_editor(request, pk):
-    project = get_object_or_404(Project, pk=pk, owner=request.user)
+    project = get_object_or_404(Project, pk=pk)
+    user_role = None
+    if request.user == project.owner:
+        user_role = 'owner'
+    else:
+        pur = ProjectUserRole.objects.filter(project=project, user=request.user).first()
+        if pur:
+            user_role = pur.role
     return render(request, 'projects/editor.html', {
         'project': project,
+        'user_role': user_role,
     })
 
 
@@ -157,12 +168,59 @@ def update_element_properties(request, element_id):
 def delete_editor_element(request, element_id):
     try:
         element = EditorElement.objects.get(pk=element_id, project__owner=request.user)
-        if element.type in ['image', 'svg'] and element.file:
-            file_path = element.file.path
-            if os.path.isfile(file_path):
-                os.remove(file_path)
+        # if element.type in ['image', 'svg'] and element.file:
+        #     file_path = element.file.path
+        #     if os.path.isfile(file_path):
+        #         os.remove(file_path)
         element.delete()
         return JsonResponse({'success': True})
     except EditorElement.DoesNotExist:
         return JsonResponse({'success': False, 'error': 'Element not found'})
+    
+@require_POST
+@login_required
+def copy_editor_element(request, element_id):
+    try:
+        original_element = EditorElement.objects.get(pk=element_id, project__owner=request.user)
+        copied_element = EditorElement.objects.create(
+            project=original_element.project,
+            type=original_element.type,
+            text_content=original_element.text_content,
+            file=original_element.file,
+            position_x=original_element.position_x + 10,
+            position_y=original_element.position_y + 10,
+            width=original_element.width,
+            height=original_element.height
+        )
+        element_data = {
+            'id': copied_element.id,
+            'type': copied_element.type,
+            'file_url': copied_element.file.url if copied_element.file else '',
+            'text_content': copied_element.text_content,
+            'position_x': copied_element.position_x,
+            'position_y': copied_element.position_y,
+            'width': copied_element.width,
+            'height': copied_element.height
+        }
+        return JsonResponse({'success': True, 'element': element_data})
+    except EditorElement.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Element not found'})
 
+@require_POST
+@login_required
+def add_viewer(request, pk):
+    project = get_object_or_404(Project, pk=pk, owner=request.user)
+    username = request.POST.get('username', '').strip()
+
+    if username:
+        try:
+            viewer = User.objects.get(username=username)
+            ProjectUserRole.objects.get_or_create(
+                project=project,
+                user=viewer,
+                defaults={'role': 'viewer'}
+            )
+            return JsonResponse({'success': True, 'message': f'{username} added as a viewer'})
+        except User.DoesNotExist:
+            return JsonResponse({'success': False, 'error': 'User not found'})
+    return JsonResponse({'success': False, 'error': 'No username provided'})

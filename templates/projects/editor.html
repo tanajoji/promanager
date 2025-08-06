@@ -30,17 +30,36 @@
             background-repeat: no-repeat;
             background-position: center;
         }
+        .copy-handle {
+            position: absolute;
+            top: -7px;
+            right: 5px;
+            width: 11px;
+            height: 14px;
+            cursor: default;
+            background-image: url('{% static "images/copy.png" %}');
+            background-size: contain;
+            background-repeat: no-repeat;
+            background-position: center;
+        }
     </style>
 
     <h2 id="project-title" style="cursor:pointer;">{{ project.title }}</h2>
     <input type="text" id="edit-title-input" value="{{ project.title }}" style="display:none; font-size:1.5em; width: 80%;" />
 
-    <div>
-        <input type="text" id="textInput" placeholder="Enter text here">
-        <button class="button button-primary" id="addTextBtn">Add Text</button>
+    <div id="editorFunctions" style="display: flex; align-items: center;">
+        {% if user_role != 'viewer' %}
+            <input type="text" id="textInput" placeholder="Enter text here">
+            <button class="button button-primary" id="addTextBtn">Add Text</button>
 
-        <input type="file" id="fileInput" accept=".png,.jpg,.jpeg,.svg" style="display: none;">
-        <button class="button button-primary" id="uploadFileBtn">Upload Image/SVG</button>
+            <input type="file" id="fileInput" accept=".png,.jpg,.jpeg,.svg" style="display: none;">
+            <button class="button button-primary" id="uploadFileBtn">Upload Image/SVG</button>
+            <button class="button button-primary" id="shuffleElementsBtn">Suffle</button>
+
+            <input type="text" id="usernameInput" placeholder="Enter username" style="position: fixed; right: 125px;">
+            <button class="button button-primary" id="addViewer" style="position: fixed; right: 20px;">Add Viewer</button>
+        {% endif %}
+
     </div>
 
     <div id="editor">
@@ -51,8 +70,11 @@
                 {% elif element.type == 'image' %}
                     <img src="{{ element.file.url }}" alt="Image">
                 {% endif %}
-                <div class="delete-handle"></div>
-                <div class="resize-handle"></div>
+                {% if user_role != 'viewer' %}
+                    <div class="delete-handle"></div>
+                    <div class="resize-handle"></div>
+                    <div class="copy-handle"></div>
+                {% endif %}
             </div>
         {% endfor %}
     </div>
@@ -61,6 +83,7 @@
     $(function() {
         $('#project-title').on('click', function() {
             $(this).hide();
+            $('#edit-title-input').val($('#project-title').text());
             $('#edit-title-input').show().focus();
         });
 
@@ -273,6 +296,31 @@
                     }
                 });
             });
+
+            //Copy functionality
+            $el.find('.copy-handle').on('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const elementId = $el.data('id');
+                const url = '{% url "copy_editor_element" 0 %}'.replace('0', elementId);
+                
+                $.ajax({
+                    url: url,
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+                    success: function(response) {
+                        if (response.success && response.element) {
+                            createAndAddEditorElement(response.element);
+                        } else {
+                            alert('Failed to copy element');
+                        }
+                    },
+                    error: function() {
+                        alert('Error copying element');
+                    }
+                });
+            });
         }
 
         // Initialize existing elements
@@ -304,6 +352,7 @@
 
             $el.append('<div class="delete-handle"></div>');
             $el.append('<div class="resize-handle"></div>');
+            $el.append('<div class="copy-handle"></div>');
 
             // Add to editor
             $('#editor').append($el);
@@ -373,6 +422,86 @@
                         alert('Error uploading file');
                     }
                 });
+            }
+        });
+    
+        // Shuffle Elements
+        $('#shuffleElementsBtn').click(function() {
+            const elements = $('.editor-element').toArray();
+            if (elements.length < 2){
+                alert('Not enough elements to shuffle.');
+                return;
+            }
+            const editorWidth = $('#editor').width();
+            const editorHeight = $('#editor').height();
+
+            // Shuffle the elements array
+            for (let el of elements) {
+            const $el = $(el);
+            const elWidth = $el.outerWidth();
+            const elHeight = $el.outerHeight();
+
+            const maxLeft = editorWidth - elWidth;
+            const maxTop = editorHeight - elHeight;
+
+            const randomLeft = Math.floor(Math.random() * maxLeft);
+            const randomTop = Math.floor(Math.random() * maxTop);
+
+            // Apply new position
+            $el.css({
+                position: 'absolute',
+                left: randomLeft + 'px',
+                top: randomTop + 'px'
+            });
+
+            //Save new position to the database
+            const elementId = $el.data('id');
+            const url = `{% url 'update_element_properties' 0 %}`.replace('0', elementId);
+            if (elementId) {
+                $.ajax({
+                    url: url,
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+                    data: {
+                        position_x: randomLeft,
+                        position_y: randomTop
+                    },
+                    success: function(response) {
+                        if (!response.success) {
+                            alert('Failed to update position');
+                        }
+                    },
+                    error: function() {
+                        alert('Error updating position');
+                    }
+                });
+            }
+        }
+        });
+    
+        // Add Viewer
+        $('#addViewer').click(function() {
+            const username = $('#usernameInput').val().trim();
+            if (username) {
+                $.ajax({
+                    url: '{% url "add_viewer" project.id %}',
+                    method: 'POST',
+                    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+                    data: { username: username },
+                    success: function(response) {
+                        if (response.success) {
+                            alert('Viewer added successfully');
+                            $('#usernameInput').val(''); // Clear input
+                        } else {
+                            alert(response.error || 'Failed to add viewer');
+                        }
+                    },
+                    error: function() {
+                        alert('Error adding viewer');
+                    }
+                });
+            } else {
+                alert('Please enter a username.');
             }
         });
     });

@@ -40,4 +40,22 @@
         <p>You have no projects yet.</p>
     {% endif %}
 
+    {% if viewer_projects %}
+        <h2 style="margin-top: 50px;">Projects You Can View</h2>
+        <div style="margin-top: 30px;">
+            <ul>
+            {% for project in viewer_projects %}
+                <li>
+                    <strong>{{ project.title }}</strong>
+                    <div style="margin-bottom: 10px;">
+                        <a href="{% url 'edit_project' project.pk %}">
+                            <button class="button button-primary" type="button">Open</button>
+                        </a>
+                    </div>
+                </li>
+            {% endfor %}
+            </ul>
+        </div>
+    {% endif %}
+
 {% endblock %}
